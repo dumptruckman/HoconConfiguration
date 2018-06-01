@@ -19,8 +19,8 @@ Maven Dependency Info
 <dependencies>
     <dependency>
         <groupId>com.dumptruckman.minecraft</groupId>
-        <artifactId>JsonConfiguration</artifactId>
-        <version>1.1</version>
+        <artifactId>HoconConfiguration</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
     </dependency>
 </dependencies>
 ```
