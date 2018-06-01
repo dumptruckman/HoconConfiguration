@@ -1,14 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-package com.dumptruckman.bukkit.configuration.json;
+package com.dumptruckman.bukkit.configuration.hocon;
 
 import com.dumptruckman.bukkit.configuration.SerializableSet;
 import com.dumptruckman.bukkit.configuration.util.SerializationHelper;
-import com.google.common.base.Charsets;
-import net.minidev.json.JSONValue;
-import net.minidev.json.parser.JSONParser;
-import net.minidev.json.parser.ParseException;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValue;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -17,30 +16,27 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.Charset;
-import java.nio.charset.IllegalCharsetNameException;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * A JSON Configuration for Bukkit based on {@link FileConfiguration}.
+ * A Hocon Configuration for Bukkit based on {@link FileConfiguration}.
  *
  * Able to store all the things you'd expect from a Bukkit configuration.
  */
-public class JsonConfiguration extends FileConfiguration {
+public class HoconConfiguration extends FileConfiguration {
 
     protected static final String BLANK_CONFIG = "{}\n";
 
-    private static final Logger LOG = Logger.getLogger(JsonConfiguration.class.getName());
+    private static final Logger LOG = Logger.getLogger(HoconConfiguration.class.getName());
 
     @NotNull
     @Override
     public String saveToString() {
-        String dump = JSONValue.toJSONString(SerializationHelper.serialize(getValues(false)));
+        ConfigValue hoconConfig = SerializationHelper.buildHoconConfig(getValues(false));
+        String dump = hoconConfig.render();
 
         if (dump.equals(BLANK_CONFIG)) {
             dump = "";
@@ -55,20 +51,11 @@ public class JsonConfiguration extends FileConfiguration {
             return;
         }
 
-        Map<?, ?> input;
-        try {
-            input = (Map<?, ?>) new JSONParser(JSONParser.USE_INTEGER_STORAGE).parse(contents);
-        } catch (ParseException e) {
-            throw new InvalidConfigurationException("Invalid JSON detected.", e);
-        } catch (ClassCastException e) {
-            throw new InvalidConfigurationException("Top level is not a Map.", e);
-        }
+        Config hoconConfig = ConfigFactory.parseString(contents);
+        hoconConfig = hoconConfig.resolve();
+        Map<String, Object> unwrapped = hoconConfig.root().unwrapped();
 
-        if (input != null) {
-            convertMapsToSections(input, this);
-        } else {
-            throw new InvalidConfigurationException("An unknown error occurred while attempting to parse the json.");
-        }
+        convertMapsToSections(unwrapped, this);
     }
 
     private void convertMapsToSections(@NotNull Map<?, ?> input, @NotNull final ConfigurationSection section) {
@@ -92,20 +79,20 @@ public class JsonConfiguration extends FileConfiguration {
 
     @Override
     protected String buildHeader() {
-        // json does not support comments of any kind.
+        // TODO implement header
         return "";
     }
 
     @Override
-    public JsonConfigurationOptions options() {
+    public HoconConfigurationOptions options() {
         if (options == null) {
-            options = new JsonConfigurationOptions(this);
+            options = new HoconConfigurationOptions(this);
         }
 
-        return (JsonConfigurationOptions) options;
+        return (HoconConfigurationOptions) options;
     }
 
-    private static JsonConfiguration loadConfiguration(@NotNull final JsonConfiguration config, @NotNull final File file) {
+    private static HoconConfiguration loadConfiguration(@NotNull final HoconConfiguration config, @NotNull final File file) {
         try {
             config.load(file);
         } catch (FileNotFoundException ex) {
@@ -119,7 +106,7 @@ public class JsonConfiguration extends FileConfiguration {
     }
 
     /**
-     * Loads up a configuration from a json formatted file.
+     * Loads up a configuration from a hocon formatted file.
      *
      * If the file does not exist, it will be created.  This will attempt to use UTF-8 encoding for the file, if it fails
      * to do so, the system default will be used instead.
@@ -127,11 +114,11 @@ public class JsonConfiguration extends FileConfiguration {
      * @param file The file to load the configuration from.
      * @return The configuration loaded from the file contents.
      */
-    public static JsonConfiguration loadConfiguration(@NotNull final File file) {
-        return loadConfiguration(new JsonConfiguration(), file);
+    public static HoconConfiguration loadConfiguration(@NotNull final File file) {
+        return loadConfiguration(new HoconConfiguration(), file);
     }
 
-    public JsonConfiguration() {
+    public HoconConfiguration() {
         ConfigurationSerialization.registerClass(SerializableSet.class);
     }
 }

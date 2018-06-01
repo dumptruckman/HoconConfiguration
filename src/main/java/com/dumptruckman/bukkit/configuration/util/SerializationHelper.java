@@ -1,12 +1,18 @@
 package com.dumptruckman.bukkit.configuration.util;
 
 import com.dumptruckman.bukkit.configuration.SerializableSet;
+import com.typesafe.config.ConfigOrigin;
+import com.typesafe.config.ConfigOriginFactory;
+import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueFactory;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.serialization.ConfigurationSerializable;
 import org.bukkit.configuration.serialization.ConfigurationSerialization;
 import org.jetbrains.annotations.NotNull;
 import org.yaml.snakeyaml.error.YAMLException;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -25,7 +31,7 @@ public class SerializationHelper {
 
     private static final Logger LOG = Logger.getLogger(SerializationHelper.class.getName());
 
-    public static Object serialize(@NotNull Object value) {
+    public static ConfigValue buildHoconConfig(@NotNull Object value) {
         if (value instanceof Object[]) {
             value = new ArrayList<>(Arrays.asList((Object[]) value));
         }
@@ -45,7 +51,7 @@ public class SerializationHelper {
             values.putAll(serializable.serialize());
             return buildMap(values);
         } else {
-            return value;
+            return ConfigValueFactory.fromAnyRef(value, "HoconConfiguration");
         }
     }
 
@@ -64,16 +70,16 @@ public class SerializationHelper {
      *   for Everything else: stores it as is in the returned Map.
      */
     @NotNull
-    private static Map<String, Object> buildMap(@NotNull final Map<?, ?> map) {
-        final Map<String, Object> result = new LinkedHashMap<String, Object>(map.size());
+    private static ConfigValue buildMap(@NotNull final Map<?, ?> map) {
+        final Map<String, ConfigValue> result = new LinkedHashMap<>(map.size());
         try {
             for (final Map.Entry<?, ?> entry : map.entrySet()) {
-                result.put(entry.getKey().toString(), serialize(entry.getValue()));
+                result.put(entry.getKey().toString(), buildHoconConfig(entry.getValue()));
             }
         } catch (final Exception e) {
             LOG.log(Level.WARNING, "Error while building configuration map.", e);
         }
-        return result;
+        return newConfigObject(result);
     }
 
     /**
@@ -90,16 +96,16 @@ public class SerializationHelper {
      *       and calls {@link #buildMap(java.util.Map)} on the new Map before adding to the returned list.
      *   for Everything else: stores it as is in the returned List.
      */
-    private static List<Object> buildList(@NotNull final Collection<?> collection) {
-        final List<Object> result = new ArrayList<Object>(collection.size());
+    private static ConfigValue buildList(@NotNull final Collection<?> collection) {
+        final List<ConfigValue> result = new ArrayList<>(collection.size());
         try {
             for (Object o : collection) {
-                result.add(serialize(o));
+                result.add(buildHoconConfig(o));
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Error while building configuration list.", e);
         }
-        return result;
+        return newConfigList(result);
     }
 
     /**
@@ -148,5 +154,46 @@ public class SerializationHelper {
             }
         }
         return output;
+    }
+
+    static ConfigValue newConfigObject(Map<String, ConfigValue> vals) {
+        try {
+            return CONFIG_OBJECT_CONSTRUCTOR.newInstance(ORIGIN, vals);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException(e); // rethrow
+        }
+
+    }
+
+    static ConfigValue newConfigList(List<ConfigValue> vals) {
+        try {
+            return CONFIG_LIST_CONSTRUCTOR.newInstance(ORIGIN, vals);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException(e); // rethrow
+        }
+    }
+
+    // -- Comment handling -- this might have to be updated as the hocon dep changes (But tests should detect this
+    // breakage
+    private static final ConfigOrigin ORIGIN = ConfigOriginFactory.newSimple("HoconConfiguration");
+    private static final Constructor<? extends ConfigValue> CONFIG_OBJECT_CONSTRUCTOR;
+    private static final Constructor<? extends ConfigValue> CONFIG_LIST_CONSTRUCTOR;
+    static {
+        Class<? extends ConfigValue> objectClass, listClass;
+        try {
+            objectClass = Class.forName("com.typesafe.config.impl.SimpleConfigObject").asSubclass(ConfigValue.class);
+            listClass = Class.forName("com.typesafe.config.impl.SimpleConfigList").asSubclass(ConfigValue.class);
+        } catch (ClassNotFoundException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+
+        try {
+            CONFIG_OBJECT_CONSTRUCTOR = objectClass.getDeclaredConstructor(ConfigOrigin.class, Map.class);
+            CONFIG_OBJECT_CONSTRUCTOR.setAccessible(true);
+            CONFIG_LIST_CONSTRUCTOR = listClass.getDeclaredConstructor(ConfigOrigin.class, List.class);
+            CONFIG_LIST_CONSTRUCTOR.setAccessible(true);
+        } catch (NoSuchMethodException e) {
+            throw new ExceptionInInitializerError(e);
+        }
     }
 }
