@@ -9,6 +9,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.serialization.ConfigurationSerializable;
 import org.bukkit.configuration.serialization.ConfigurationSerialization;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.yaml.snakeyaml.error.YAMLException;
 
 import java.lang.reflect.Constructor;
@@ -31,7 +32,23 @@ public class SerializationHelper {
 
     private static final Logger LOG = Logger.getLogger(SerializationHelper.class.getName());
 
-    public static ConfigValue buildHoconConfig(@NotNull Object value) {
+    public static SerializationHelper createSerializationHelper(@NotNull Map<String, List<String>> withComments, char pathSeparator) {
+        return new SerializationHelper(withComments, pathSeparator);
+    }
+
+    private final @NotNull Map<String, List<String>> allComments;
+    private final char pathSeparator;
+
+    private SerializationHelper(@NotNull Map<String, List<String>> withComments, char pathSeparator) {
+        this.allComments = withComments;
+        this.pathSeparator = pathSeparator;
+    }
+
+    public ConfigValue buildHoconConfig(@NotNull Object value) {
+        return buildHoconConfig(value, "");
+    }
+
+    private ConfigValue buildHoconConfig(@NotNull Object value, @Nullable String currentPath) {
         if (value instanceof Object[]) {
             value = new ArrayList<>(Arrays.asList((Object[]) value));
         }
@@ -39,19 +56,19 @@ public class SerializationHelper {
             value = new SerializableSet((Set) value);
         }
         if (value instanceof ConfigurationSection) {
-            return buildMap(((ConfigurationSection) value).getValues(false));
+            return buildMap(((ConfigurationSection) value).getValues(false), currentPath);
         } else if (value instanceof Map) {
-            return buildMap((Map) value);
+            return buildMap((Map) value, currentPath);
         } else if (value instanceof List) {
-            return buildList((List) value);
+            return buildList((List) value, currentPath);
         } else if (value instanceof ConfigurationSerializable) {
             ConfigurationSerializable serializable = (ConfigurationSerializable) value;
             Map<String, Object> values = new LinkedHashMap<>();
             values.put(ConfigurationSerialization.SERIALIZED_TYPE_KEY, ConfigurationSerialization.getAlias(serializable.getClass()));
             values.putAll(serializable.serialize());
-            return buildMap(values);
+            return buildMap(values, currentPath);
         } else {
-            return ConfigValueFactory.fromAnyRef(value, "HoconConfiguration");
+            return applyComments(ConfigValueFactory.fromAnyRef(value, "HoconConfiguration"), currentPath);
         }
     }
 
@@ -70,16 +87,18 @@ public class SerializationHelper {
      *   for Everything else: stores it as is in the returned Map.
      */
     @NotNull
-    private static ConfigValue buildMap(@NotNull final Map<?, ?> map) {
+    private ConfigValue buildMap(@NotNull final Map<?, ?> map, @Nullable String currentPath) {
         final Map<String, ConfigValue> result = new LinkedHashMap<>(map.size());
         try {
             for (final Map.Entry<?, ?> entry : map.entrySet()) {
-                result.put(entry.getKey().toString(), buildHoconConfig(entry.getValue()));
+                String key = entry.getKey().toString();
+                String nextPath = currentPath == null ? null : currentPath.isEmpty() ? key : currentPath + pathSeparator + key;
+                result.put(key, buildHoconConfig(entry.getValue(), nextPath));
             }
         } catch (final Exception e) {
             LOG.log(Level.WARNING, "Error while building configuration map.", e);
         }
-        return newConfigObject(result);
+        return applyComments(newConfigObject(result), currentPath);
     }
 
     /**
@@ -96,16 +115,26 @@ public class SerializationHelper {
      *       and calls {@link #buildMap(java.util.Map)} on the new Map before adding to the returned list.
      *   for Everything else: stores it as is in the returned List.
      */
-    private static ConfigValue buildList(@NotNull final Collection<?> collection) {
+    private ConfigValue buildList(@NotNull final Collection<?> collection, @Nullable String currentPath) {
         final List<ConfigValue> result = new ArrayList<>(collection.size());
         try {
             for (Object o : collection) {
-                result.add(buildHoconConfig(o));
+                result.add(buildHoconConfig(o, null));
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Error while building configuration list.", e);
         }
-        return newConfigList(result);
+        return applyComments(newConfigList(result), currentPath);
+    }
+
+    private ConfigValue applyComments(@NotNull ConfigValue value, @Nullable String currentPath) {
+        if (currentPath != null) {
+            List<String> comments = allComments.get(currentPath);
+            if (comments != null && !comments.isEmpty()) {
+                return value.withOrigin(value.origin().withComments(comments));
+            }
+        }
+        return value;
     }
 
     /**

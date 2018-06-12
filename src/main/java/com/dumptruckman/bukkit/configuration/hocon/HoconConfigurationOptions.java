@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package com.dumptruckman.bukkit.configuration.hocon;
 
+import com.typesafe.config.ConfigRenderOptions;
 import org.bukkit.configuration.file.FileConfigurationOptions;
 import org.jetbrains.annotations.NotNull;
 
@@ -14,6 +15,10 @@ public class HoconConfigurationOptions extends FileConfigurationOptions {
     protected HoconConfigurationOptions(@NotNull final HoconConfiguration configuration) {
         super(configuration);
     }
+
+    private ConfigRenderOptions renderOptions = ConfigRenderOptions.defaults()
+            .setOriginComments(false)
+            .setJson(false);
 
     @Override
     public HoconConfiguration configuration() {
@@ -42,5 +47,25 @@ public class HoconConfigurationOptions extends FileConfigurationOptions {
     public HoconConfigurationOptions copyHeader(final boolean value) {
         super.copyHeader(value);
         return this;
+    }
+
+    /**
+     * Sets the render options for the configuration.
+     *
+     * @param renderOptions the new render options.
+     * @return This options for chaining.
+     */
+    public HoconConfigurationOptions renderOptions(ConfigRenderOptions renderOptions) {
+        this.renderOptions = renderOptions;
+        return this;
+    }
+
+    /**
+     * Returns the render options for the configuration.
+     *
+     * @return the render options for the configuration.
+     */
+    public ConfigRenderOptions renderOptions() {
+        return renderOptions;
     }
 }
